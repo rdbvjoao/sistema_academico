@@ -32,6 +32,8 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.text.MaskFormatter;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import javax.swing.text.JTextComponent;
 
 import br.com.cadastroalunos.dao.AlunoDAO;
@@ -74,6 +76,9 @@ public class TelaPrincipal extends JFrame {
 	private static final int BTN_GAP = 10;
 	private static final int MARGEM = 20;
 
+	private static final int MAX_FALTAS_POR_AVALIACAO = 99;
+	private static final int LIMITE_FALTAS_REPROVACAO = 20;
+
 	private final Color COR_CAMPO = new Color(198, 222, 241);
 	private final Color COR_CAMPO_RO = new Color(190, 210, 230);
 
@@ -99,8 +104,6 @@ public class TelaPrincipal extends JFrame {
 	private ButtonGroup grupoPeriodo;
 
 	// --- Aba Notas e Faltas ---
-	// txtFaltasA1 e txtFaltasA2 substituem o antigo txtFaltas único,
-	// permitindo registrar e editar faltas por período de avaliação separadamente.
 	private JTextField txtRgmNota, txtNomeNota, txtCursoNota;
 	private JTextField txtFaltasA1, txtFaltasA2;
 	private JLabel lblTotalFaltas;
@@ -109,6 +112,10 @@ public class TelaPrincipal extends JFrame {
 	private JTextField txtA1, txtA2, txtA3;
 	private JLabel lblValorMedia, lblStatusMedia;
 	private JButton btnLancarA3;
+
+	// CORREÇÃO: botões declarados como campos da classe para acesso em outros
+	// métodos
+	private JButton btnSalvarA1, btnSalvarA2;
 
 	// --- Aba Boletim ---
 	private JTextField txtBoletimRgm, txtBoletimNome, txtBoletimCurso;
@@ -121,7 +128,7 @@ public class TelaPrincipal extends JFrame {
 	private static final String[] SEMESTRES = { "2026-1" };
 
 	// =========================================================
-	// DIÁLOGOS PADRONIZADOS — sem duplicidade
+	// DIÁLOGOS PADRONIZADOS
 	// =========================================================
 	private void msgErro(String msg) {
 		JOptionPane.showMessageDialog(this, msg, "Erro", JOptionPane.ERROR_MESSAGE);
@@ -432,6 +439,7 @@ public class TelaPrincipal extends JFrame {
 		cMedia.add(lblValorMedia);
 		lblStatusMedia = new JLabel("Sem cálculo");
 		lblStatusMedia.setBounds(10, 62, cardW - 12, 16);
+		lblStatusMedia.setForeground(new Color(80, 80, 80));
 		cMedia.add(lblStatusMedia);
 		p.add(cMedia);
 
@@ -456,7 +464,6 @@ public class TelaPrincipal extends JFrame {
 		// =========================================================
 		// BLOCO DE FALTAS
 		// =========================================================
-
 		int faltasBoxY = cardY + cardH + 10;
 		int faltasBoxH = 70;
 		int faltasBoxW = PAINEL_W - 2 * MARGEM;
@@ -479,11 +486,14 @@ public class TelaPrincipal extends JFrame {
 		txtFaltasA1.setBackground(COR_CAMPO);
 		txtFaltasA1.setFont(fonte);
 		faltasBox.add(txtFaltasA1);
-		permitirSomenteInteiros(txtFaltasA1);
+
+		permitirSomenteInteirosFaltas(txtFaltasA1);
+
 		txtFaltasA1.addKeyListener(new KeyAdapter() {
 			@Override
 			public void keyReleased(KeyEvent e) {
 				atualizarLabelTotalFaltas();
+				atualizarMediaParcial();
 			}
 		});
 
@@ -498,15 +508,18 @@ public class TelaPrincipal extends JFrame {
 		txtFaltasA2.setBackground(COR_CAMPO);
 		txtFaltasA2.setFont(fonte);
 		faltasBox.add(txtFaltasA2);
-		permitirSomenteInteiros(txtFaltasA2);
+
+		permitirSomenteInteirosFaltas(txtFaltasA2);
+
 		txtFaltasA2.addKeyListener(new KeyAdapter() {
 			@Override
 			public void keyReleased(KeyEvent e) {
 				atualizarLabelTotalFaltas();
+				atualizarMediaParcial();
 			}
 		});
 
-		lblTotalFaltas = new JLabel("Total: 0  |  Limite: 20");
+		lblTotalFaltas = new JLabel("Total: 0  |  Limite: " + LIMITE_FALTAS_REPROVACAO);
 		lblTotalFaltas.setFont(new Font("Arial", Font.PLAIN, 11));
 		lblTotalFaltas.setForeground(new Color(80, 80, 80));
 		lblTotalFaltas.setBounds(startX2 + campoW + 15, 30, 160, 18);
@@ -524,7 +537,7 @@ public class TelaPrincipal extends JFrame {
 		p.add(aviso);
 
 		// =========================================================
-		// BOTÕES — distribuídos proporcionalmente em 3 colunas
+		// BOTÕES
 		// =========================================================
 		int bw = BTN_W;
 		int espaco = (PAINEL_W - 3 * bw) / 4;
@@ -536,7 +549,6 @@ public class TelaPrincipal extends JFrame {
 		int row2Y = row1Y + BTN_H + BTN_GAP;
 		int row3Y = row2Y + BTN_H + BTN_GAP;
 
-		// Linha 1 — Consultar e Limpar (centralizados nas colunas 1 e 2)
 		JButton btnConsultar = btn("Consultar", col1X, row1Y, bw, BTN_H);
 		btnConsultar.addActionListener(e -> acaoConsultarNota());
 		p.add(btnConsultar);
@@ -545,22 +557,23 @@ public class TelaPrincipal extends JFrame {
 		btnLimpar.addActionListener(e -> limparAbaNotas());
 		p.add(btnLimpar);
 
-		// Linha 2 — Salvar A1, Salvar A2, Lançar A3
-		JButton btnSalvarA1 = btn("Salvar A1", col1X, row2Y, bw, BTN_H);
+		// CORREÇÃO: btnSalvarA1 e btnSalvarA2 são campos da classe e iniciam
+		// desabilitados
+		btnSalvarA1 = btn("Salvar A1", col1X, row2Y, bw, BTN_H);
+		btnSalvarA1.setEnabled(false);
 		btnSalvarA1.addActionListener(e -> acaoSalvarNotaA1());
 		p.add(btnSalvarA1);
 
-		JButton btnSalvarA2 = btn("Salvar A2", col2X, row2Y, bw, BTN_H);
+		btnSalvarA2 = btn("Salvar A2", col2X, row2Y, bw, BTN_H);
+		btnSalvarA2.setEnabled(false);
 		btnSalvarA2.addActionListener(e -> acaoSalvarNotaA2());
 		p.add(btnSalvarA2);
 
-		// JButton btnLancarA3 = btn("Lançar A3", col3X, row2Y, bw, BTN_H);
 		btnLancarA3 = btn("Lançar A3", col3X, row2Y, bw, BTN_H);
 		btnLancarA3.setEnabled(false);
 		btnLancarA3.addActionListener(e -> acaoSalvarNota());
 		p.add(btnLancarA3);
 
-		// Linha 3 — Alterar, Excluir, Sair
 		JButton btnAlterar = btn("Alterar", col1X, row3Y, bw, BTN_H);
 		btnAlterar.addActionListener(e -> acaoAlterarNota());
 		p.add(btnAlterar);
@@ -800,6 +813,9 @@ public class TelaPrincipal extends JFrame {
 			alunoAtual = aluno;
 			carregarDadosAlunoNotas();
 			atualizarTabelaBoletim();
+			// CORREÇÃO: ao consultar, botões de salvar permanecem travados
+			btnSalvarA1.setEnabled(false);
+			btnSalvarA2.setEnabled(false);
 			msgSucesso("Aluno carregado com sucesso!");
 		} catch (Exception ex) {
 			msgErro("Erro ao consultar aluno:\n" + ex.getMessage());
@@ -830,8 +846,18 @@ public class TelaPrincipal extends JFrame {
 				return;
 			}
 
-			// Lê as faltas do campo específico da A1 (substitui — não acumula)
 			int faltasA1 = Integer.parseInt(txtFaltasA1.getText().trim());
+			if (faltasA1 < 0) {
+				msgErro("O número de faltas não pode ser negativo.");
+				txtFaltasA1.requestFocus();
+				return;
+			}
+			if (faltasA1 > MAX_FALTAS_POR_AVALIACAO) {
+				msgErro("O número de faltas não pode ultrapassar " + MAX_FALTAS_POR_AVALIACAO + ".");
+				txtFaltasA1.requestFocus();
+				return;
+			}
+
 			String sem = cmbSemestre.getSelectedItem().toString();
 
 			NotaFalta nf = notaFaltaDAO.buscarPorAlunoDisciplinaSemestre(alunoAtual.getId(), disc.getId(), sem);
@@ -843,7 +869,7 @@ public class TelaPrincipal extends JFrame {
 				nf.setSemestre(sem);
 			}
 			nf.setA1(a1);
-			nf.setFaltasA1(faltasA1); // grava somente as faltas da A1
+			nf.setFaltasA1(faltasA1);
 			nf.setMedia(nf.getA2() > 0 ? (a1 + nf.getA2()) / 2.0 : 0);
 
 			if (nf.getId() == 0)
@@ -852,7 +878,13 @@ public class TelaPrincipal extends JFrame {
 				notaFaltaDAO.alterar(nf);
 
 			txtA1.setEditable(false);
+			txtFaltasA1.setEditable(false);
+
+			// CORREÇÃO: trava o botão Salvar A1 após salvar com sucesso
+			btnSalvarA1.setEnabled(false);
+
 			atualizarLabelTotalFaltas();
+			atualizarMediaParcial();
 			atualizarTabelaBoletim();
 			msgSucesso("A1 salva com sucesso!");
 		} catch (Exception ex) {
@@ -862,8 +894,10 @@ public class TelaPrincipal extends JFrame {
 
 	private void acaoSalvarNotaA2() {
 		try {
-			if (alunoAtual == null)
+			if (alunoAtual == null) {
+				msgAviso("Consulte um aluno primeiro.");
 				return;
+			}
 			Disciplina disc = (Disciplina) cmbDisciplina.getSelectedItem();
 			String sem = cmbSemestre.getSelectedItem().toString();
 			if (txtA2.getText().trim().isEmpty()) {
@@ -881,8 +915,17 @@ public class TelaPrincipal extends JFrame {
 				return;
 			}
 
-			// Lê as faltas do campo específico da A2 (substitui — não acumula)
 			int faltasA2 = Integer.parseInt(txtFaltasA2.getText().trim());
+			if (faltasA2 < 0) {
+				msgErro("O número de faltas não pode ser negativo.");
+				txtFaltasA2.requestFocus();
+				return;
+			}
+			if (faltasA2 > MAX_FALTAS_POR_AVALIACAO) {
+				msgErro("O número de faltas não pode ultrapassar " + MAX_FALTAS_POR_AVALIACAO + ".");
+				txtFaltasA2.requestFocus();
+				return;
+			}
 
 			NotaFalta nf = notaFaltaDAO.buscarPorAlunoDisciplinaSemestre(alunoAtual.getId(), disc.getId(), sem);
 			if (nf == null) {
@@ -891,12 +934,17 @@ public class TelaPrincipal extends JFrame {
 			}
 
 			nf.setA2(a2);
-			nf.setFaltasA2(faltasA2); // grava somente as faltas da A2
+			nf.setFaltasA2(faltasA2);
 			nf.setMedia(nf.getA1() > 0 ? (nf.getA1() + a2) / 2.0 : 0);
 
 			notaFaltaDAO.alterar(nf);
 
 			txtA2.setEditable(false);
+			txtFaltasA2.setEditable(false);
+
+			// CORREÇÃO: trava o botão Salvar A2 após salvar com sucesso
+			btnSalvarA2.setEnabled(false);
+
 			verificarA3();
 			atualizarMediaParcial();
 			atualizarLabelTotalFaltas();
@@ -945,7 +993,6 @@ public class TelaPrincipal extends JFrame {
 			nf.setA1(a1);
 			nf.setA2(a2);
 			nf.setA3(a3);
-			// Faltas A1 e A2 já foram salvas nos passos anteriores — não altera aqui
 			nf.setMedia(calcularMedia(a1, a2, a3));
 
 			if (novo)
@@ -976,11 +1023,15 @@ public class TelaPrincipal extends JFrame {
 				msgAviso("Nenhuma nota encontrada para esta disciplina/semestre.");
 				return;
 			}
-			// Libera os campos de nota e faltas para reedição
 			txtA1.setEditable(true);
 			txtA2.setEditable(true);
 			txtFaltasA1.setEditable(true);
 			txtFaltasA2.setEditable(true);
+
+			// CORREÇÃO: libera os botões de salvar somente após clicar em Alterar
+			btnSalvarA1.setEnabled(true);
+			btnSalvarA2.setEnabled(true);
+
 			verificarA3();
 			msgAviso("Campos liberados para edição.\nAjuste os valores e clique em Salvar A1 ou Salvar A2.");
 		} catch (Exception ex) {
@@ -1022,7 +1073,12 @@ public class TelaPrincipal extends JFrame {
 			txtFaltasA2.setEditable(true);
 			txtA3.setEnabled(false);
 
+			// CORREÇÃO: após excluir, os botões de salvar voltam a ficar travados
+			btnSalvarA1.setEnabled(false);
+			btnSalvarA2.setEnabled(false);
+
 			atualizarLabelTotalFaltas();
+			atualizarMediaParcial();
 			atualizarTabelaBoletim();
 			msgSucesso("Nota excluída com sucesso!");
 		} catch (Exception ex) {
@@ -1033,28 +1089,21 @@ public class TelaPrincipal extends JFrame {
 	// =========================================================
 	// HELPERS — NOTAS
 	// =========================================================
-
-	/**
-	 * Atualiza o label "Total: X | Limite: 20" em tempo real, somando os valores
-	 * digitados em txtFaltasA1 e txtFaltasA2. Se um dos campos estiver vazio,
-	 * considera 0.
-	 */
 	private void atualizarLabelTotalFaltas() {
 		try {
 			int fa1 = txtFaltasA1.getText().trim().isEmpty() ? 0 : Integer.parseInt(txtFaltasA1.getText().trim());
 			int fa2 = txtFaltasA2.getText().trim().isEmpty() ? 0 : Integer.parseInt(txtFaltasA2.getText().trim());
 			int total = fa1 + fa2;
-			// Destaca em vermelho se o aluno já atingiu ou ultrapassou o limite
-			lblTotalFaltas.setForeground(total >= 20 ? new Color(180, 0, 0) : new Color(80, 80, 80));
-			lblTotalFaltas.setText("Total: " + total + "  |  Limite: 20");
+			lblTotalFaltas
+					.setForeground(total >= LIMITE_FALTAS_REPROVACAO ? new Color(180, 0, 0) : new Color(80, 80, 80));
+			lblTotalFaltas.setText("Total: " + total + "  |  Limite: " + LIMITE_FALTAS_REPROVACAO);
 		} catch (NumberFormatException ex) {
-			lblTotalFaltas.setText("Total: ?  |  Limite: 20");
+			lblTotalFaltas.setText("Total: ?  |  Limite: " + LIMITE_FALTAS_REPROVACAO);
 		}
 	}
 
 	private void carregarNotaPorDisciplina() {
 		try {
-			// Se não há aluno, limpa tudo e libera os campos para digitação futura
 			if (alunoAtual == null) {
 				txtA1.setText("");
 				txtA2.setText("");
@@ -1066,6 +1115,7 @@ public class TelaPrincipal extends JFrame {
 				txtFaltasA1.setEditable(true);
 				txtFaltasA2.setEditable(true);
 				atualizarLabelTotalFaltas();
+				atualizarMediaParcial();
 				return;
 			}
 
@@ -1088,7 +1138,7 @@ public class TelaPrincipal extends JFrame {
 					atualizarLabelTotalFaltas();
 					atualizarMediaParcial();
 					verificarA3();
-					// Registro existente: trava até clicar em Alterar
+					// Campos travados até clicar em Alterar
 					txtA1.setEditable(false);
 					txtA2.setEditable(false);
 					txtFaltasA1.setEditable(false);
@@ -1097,7 +1147,10 @@ public class TelaPrincipal extends JFrame {
 				}
 			}
 
-			// Nenhum registro encontrado — libera todos os campos para novo lançamento
+			// Nenhuma nota encontrada: libera campos para primeiro lançamento,
+			// mas mantém os botões de salvar travados — usuário deve clicar em Alterar
+			// para lançar pela primeira vez via fluxo de edição intencional,
+			// ou usar os botões Salvar A1/A2 que serão liberados ao clicar em Alterar.
 			txtA1.setText("");
 			txtA2.setText("");
 			txtA3.setText("");
@@ -1108,6 +1161,7 @@ public class TelaPrincipal extends JFrame {
 			txtFaltasA1.setEditable(true);
 			txtFaltasA2.setEditable(true);
 			atualizarLabelTotalFaltas();
+			atualizarMediaParcial();
 
 		} catch (Exception ex) {
 			msgErro("Erro ao carregar nota:\n" + ex.getMessage());
@@ -1159,7 +1213,6 @@ public class TelaPrincipal extends JFrame {
 
 	// =========================================================
 	// TABELA DO BOLETIM
-	// Usa nf.getFaltas() que retorna faltasA1 + faltasA2 automaticamente.
 	// =========================================================
 	private void atualizarTabelaBoletim() {
 		try {
@@ -1245,7 +1298,6 @@ public class TelaPrincipal extends JFrame {
 				cN.setHorizontalAlignment(Element.ALIGN_CENTER);
 				cN.setBackgroundColor(cor);
 				cN.setPadding(6);
-				// nf.getFaltas() retorna faltasA1 + faltasA2 automaticamente
 				PdfPCell cF = new PdfPCell(new Phrase(String.valueOf(nf.getFaltas()), fNorm));
 				cF.setHorizontalAlignment(Element.ALIGN_CENTER);
 				cF.setBackgroundColor(cor);
@@ -1367,12 +1419,19 @@ public class TelaPrincipal extends JFrame {
 		txtFaltasA2.setEditable(true);
 		lblValorMedia.setText("0,0");
 		lblStatusMedia.setText("Sem cálculo");
-		lblTotalFaltas.setText("Total: 0  |  Limite: 20");
+		lblStatusMedia.setForeground(new Color(80, 80, 80));
+		lblTotalFaltas.setText("Total: 0  |  Limite: " + LIMITE_FALTAS_REPROVACAO);
 		lblTotalFaltas.setForeground(new Color(80, 80, 80));
 		notaSelecionada = null;
 		modeloBoletim.setRowCount(0);
 		alunoAtual = null;
 		cmbDisciplina.removeAllItems();
+
+		// CORREÇÃO: garante que os botões de salvar fiquem travados ao limpar
+		if (btnSalvarA1 != null)
+			btnSalvarA1.setEnabled(false);
+		if (btnSalvarA2 != null)
+			btnSalvarA2.setEnabled(false);
 	}
 
 	private void limparFormulario() {
@@ -1405,6 +1464,13 @@ public class TelaPrincipal extends JFrame {
 		txtFaltasA2.setText("");
 		if (modeloBoletim != null)
 			modeloBoletim.setRowCount(0);
+
+		// CORREÇÃO: garante que os botões de salvar fiquem travados ao limpar
+		// formulário
+		if (btnSalvarA1 != null)
+			btnSalvarA1.setEnabled(false);
+		if (btnSalvarA2 != null)
+			btnSalvarA2.setEnabled(false);
 	}
 
 	// =========================================================
@@ -1508,6 +1574,7 @@ public class TelaPrincipal extends JFrame {
 			if (txtA1.getText().trim().isEmpty() || txtA2.getText().trim().isEmpty()) {
 				lblValorMedia.setText("0,0");
 				lblStatusMedia.setText("Sem cálculo");
+				lblStatusMedia.setForeground(new Color(80, 80, 80));
 				return;
 			}
 			double a1 = Double.parseDouble(txtA1.getText().replace(",", "."));
@@ -1515,10 +1582,25 @@ public class TelaPrincipal extends JFrame {
 			double a3 = txtA3.getText().trim().isEmpty() ? 0 : Double.parseDouble(txtA3.getText().replace(",", "."));
 			double media = calcularMedia(a1, a2, a3);
 			lblValorMedia.setText(String.format("%.1f", media));
-			lblStatusMedia.setText(media >= 6.0 ? "Aprovado" : "Precisa A3");
+
+			int fa1 = txtFaltasA1.getText().trim().isEmpty() ? 0 : Integer.parseInt(txtFaltasA1.getText().trim());
+			int fa2 = txtFaltasA2.getText().trim().isEmpty() ? 0 : Integer.parseInt(txtFaltasA2.getText().trim());
+			int totalFaltas = fa1 + fa2;
+
+			if (totalFaltas > LIMITE_FALTAS_REPROVACAO) {
+				lblStatusMedia.setText("Reprovado por falta");
+				lblStatusMedia.setForeground(new Color(139, 0, 40));
+			} else if (media >= 6.0) {
+				lblStatusMedia.setText("Aprovado");
+				lblStatusMedia.setForeground(new Color(60, 120, 40));
+			} else {
+				lblStatusMedia.setText("Precisa A3");
+				lblStatusMedia.setForeground(new Color(180, 100, 0));
+			}
 		} catch (Exception e) {
 			lblValorMedia.setText("0,0");
 			lblStatusMedia.setText("Sem cálculo");
+			lblStatusMedia.setForeground(new Color(80, 80, 80));
 		}
 	}
 
@@ -1527,21 +1609,6 @@ public class TelaPrincipal extends JFrame {
 	}
 
 	private void verificarA3() {
-		try {
-			double a1 = Double.parseDouble(txtA1.getText().replace(",", "."));
-			double a2 = Double.parseDouble(txtA2.getText().replace(",", "."));
-			double m = (a1 + a2) / 2.0;
-			boolean precisaA3 = m < 6.0 && m > 0;
-			txtA3.setEnabled(precisaA3);
-			btnLancarA3.setEnabled(precisaA3);
-			if (!precisaA3)
-				txtA3.setText("");
-		} catch (Exception e) {
-			txtA3.setEnabled(false);
-			btnLancarA3.setEnabled(false);
-			txtA3.setText("");
-		}
-
 		try {
 			double a1 = Double.parseDouble(txtA1.getText().replace(",", "."));
 			double a2 = Double.parseDouble(txtA2.getText().replace(",", "."));
@@ -1706,205 +1773,205 @@ public class TelaPrincipal extends JFrame {
 			}
 		});
 	}
-	
-	
-	private void mostrarSobre() {
-	    JDialog dlg = new JDialog(this, "Ajuda do Sistema", true);
-	    dlg.setSize(620, 580);
-	    dlg.setResizable(false);
-	    dlg.setLocationRelativeTo(this);
-	    dlg.setLayout(new BorderLayout());
 
-	    Color azulPrincipal = new Color(33, 87, 153);
-	    Color azulEscuro = new Color(25, 60, 110);
-	    Color azulClaro = new Color(240, 244, 250);
-
-	    // =========================
-	    // CABEÇALHO
-	    // =========================
-	    JPanel header = new JPanel(null);
-	    header.setPreferredSize(new Dimension(620, 75));
-	    header.setBackground(azulPrincipal);
-
-	    JLabel lblTitulo = new JLabel("Central de Ajuda do Sistema");
-	    lblTitulo.setFont(new Font("Segoe UI", Font.BOLD, 22));
-	    lblTitulo.setForeground(Color.WHITE);
-	    lblTitulo.setBounds(22, 12, 500, 28);
-	    header.add(lblTitulo);
-
-	    JLabel lblSub = new JLabel("Manual rápido de utilização das funcionalidades");
-	    lblSub.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-	    lblSub.setForeground(new Color(230, 230, 230));
-	    lblSub.setBounds(24, 42, 400, 18);
-	    header.add(lblSub);
-
-	    dlg.add(header, BorderLayout.NORTH);
-
-	    // =========================
-	    // CONTEÚDO
-	    // =========================
-	    JPanel conteudo = new JPanel();
-	    conteudo.setLayout(new BoxLayout(conteudo, BoxLayout.Y_AXIS));
-	    conteudo.setBackground(Color.WHITE);
-	    conteudo.setBorder(BorderFactory.createEmptyBorder(15, 18, 15, 18));
-
-	    adicionarSecaoAjuda(conteudo,
-	            "Dados Pessoais",
-	            "Área responsável pelo cadastro e gerenciamento dos alunos.",
-	            new String[]{
-	                    "Salvar: preencha todos os campos obrigatórios e clique em Salvar para cadastrar um novo aluno no sistema.",
-	                    "Consultar: informe o RGM do aluno e clique em Consultar para carregar os dados.",
-	                    "Alterar: após consultar, edite os campos desejados e clique em Alterar.",
-	                    "Excluir: remove o cadastro do aluno após confirmação.",
-	                    "Limpar: limpa todos os campos da tela.",
-	                    "Sair: encerra a aplicação."
-	            });
-
-	    adicionarSecaoAjuda(conteudo,
-	            "Curso",
-	            "Permite vincular um curso ao aluno cadastrado.",
-	            new String[]{
-	                    "Primeiro consulte um aluno na aba Dados Pessoais.",
-	                    "Selecione o curso desejado.",
-	                    "O campo Campus será preenchido automaticamente.",
-	                    "Escolha o período (Matutino, Vespertino ou Noturno).",
-	                    "Clique em Salvar para concluir o vínculo do curso."
-	            });
-
-	    adicionarSecaoAjuda(conteudo,
-	            "Notas e Faltas",
-	            "Área utilizada para registrar avaliações e frequência.",
-	            new String[]{
-	                    "Informe o RGM do aluno.",
-	                    "Selecione o semestre e a disciplina.",
-	                    "Clique em Consultar para carregar os dados.",
-	                    "Salvar A1 / A2: registra cada avaliação separadamente.",
-	                    "Lançar A3: disponível apenas em recuperação.",
-	                    "Alterar: atualiza notas ou faltas.",
-	                    "Excluir: remove o lançamento da disciplina.",
-	                    "A média e o status são calculados automaticamente."
-	            });
-
-	    adicionarSecaoAjuda(conteudo,
-	            "Boletim",
-	            "Exibe e exporta o boletim completo do aluno.",
-	            new String[]{
-	                    "Informe o RGM e clique em Consultar.",
-	                    "O sistema exibirá todas as disciplinas, notas, faltas e situação.",
-	                    "Clique em Exportar PDF para gerar o boletim em PDF.",
-	                    "O arquivo será salvo automaticamente na pasta do projeto."
-	            });
-
-	    adicionarSecaoAjuda(conteudo,
-	            "Dicas Importantes",
-	            "Boas práticas para utilização do sistema.",
-	            new String[]{
-	                    "Preencha corretamente todos os campos obrigatórios.",
-	                    "Sempre consulte um aluno antes de alterar ou excluir.",
-	                    "Utilize o botão Limpar antes de iniciar um novo cadastro.",
-	                    "Evite inserir letras em campos numéricos."
-	            });
-
-	    JScrollPane scroll = new JScrollPane(conteudo);
-	    scroll.setBorder(null);
-	    scroll.getVerticalScrollBar().setUnitIncrement(14);
-	    dlg.add(scroll, BorderLayout.CENTER);
-
-	    // =========================
-	    // RODAPÉ
-	    // =========================
-	    JPanel rodape = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 12));
-	    rodape.setBackground(azulClaro);
-	    rodape.setBorder(BorderFactory.createMatteBorder(
-	            1, 0, 0, 0,
-	            new Color(190, 210, 230)));
-
-	    JButton btnFechar = new JButton("Fechar");
-	    btnFechar.setFont(new Font("Segoe UI", Font.BOLD, 16));
-	    btnFechar.setPreferredSize(new Dimension(150, 40));
-	    Color azulTopo = new Color(33, 87, 153);
-	    btnFechar.setBackground(azulTopo);
-	    btnFechar.setForeground(Color.WHITE);
-	    btnFechar.setFocusPainted(false);
-	    btnFechar.setOpaque(true);
-	    btnFechar.setBorderPainted(false);
-	    btnFechar.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-	    btnFechar.setBorder(BorderFactory.createEmptyBorder());
-	    btnFechar.setOpaque(true);
-
-	    btnFechar.addMouseListener(new java.awt.event.MouseAdapter() {
-	        public void mouseEntered(java.awt.event.MouseEvent evt) {
-	            btnFechar.setBackground(new Color(18, 45, 85));
-	        }
-
-	        public void mouseExited(java.awt.event.MouseEvent evt) {
-	            btnFechar.setBackground(azulEscuro);
-	        }
-	    });
-
-	    btnFechar.addActionListener(e -> dlg.dispose());
-
-	    rodape.add(btnFechar);
-	    dlg.add(rodape, BorderLayout.SOUTH);
-
-	    dlg.setVisible(true);
+	private void permitirSomenteInteirosFaltas(JTextField campo) {
+		campo.addKeyListener(new KeyAdapter() {
+			@Override
+			public void keyTyped(KeyEvent e) {
+				char c = e.getKeyChar();
+				if (c == KeyEvent.VK_BACK_SPACE)
+					return;
+				if (!Character.isDigit(c)) {
+					e.consume();
+					return;
+				}
+				String futuro = campo.getText() + c;
+				try {
+					int val = Integer.parseInt(futuro);
+					if (val > MAX_FALTAS_POR_AVALIACAO) {
+						e.consume();
+					}
+				} catch (NumberFormatException ignored) {
+					e.consume();
+				}
+			}
+		});
+		campo.addFocusListener(new FocusAdapter() {
+			@Override
+			public void focusLost(FocusEvent e) {
+				String txt = campo.getText().trim();
+				if (txt.isEmpty())
+					return;
+				try {
+					int val = Integer.parseInt(txt);
+					if (val < 0) {
+						msgErro("O número de faltas não pode ser negativo.");
+						campo.setText("0");
+						campo.requestFocus();
+					} else if (val > MAX_FALTAS_POR_AVALIACAO) {
+						msgErro("O número de faltas não pode ultrapassar " + MAX_FALTAS_POR_AVALIACAO + ".");
+						campo.setText("");
+						campo.requestFocus();
+					}
+				} catch (NumberFormatException ex) {
+					campo.setText("");
+				}
+			}
+		});
 	}
 
-	private void adicionarSecaoAjuda(
-	        JPanel painel,
-	        String titulo,
-	        String descricao,
-	        String[] itens) {
+	private void mostrarSobre() {
+		JDialog dlg = new JDialog(this, "Ajuda do Sistema", true);
+		dlg.setSize(620, 580);
+		dlg.setResizable(false);
+		dlg.setLocationRelativeTo(this);
+		dlg.setLayout(new BorderLayout());
 
-	    Color azulTitulo = new Color(33, 87, 153);
+		Color azulPrincipal = new Color(33, 87, 153);
+		Color azulEscuro = new Color(25, 60, 110);
+		Color azulClaro = new Color(240, 244, 250);
 
-	    JPanel card = new JPanel();
-	    card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-	    card.setBackground(new Color(248, 250, 252));
+		JPanel header = new JPanel(null);
+		header.setPreferredSize(new Dimension(620, 75));
+		header.setBackground(azulPrincipal);
 
-	    card.setBorder(BorderFactory.createCompoundBorder(
-	            BorderFactory.createLineBorder(new Color(210, 225, 240)),
-	            BorderFactory.createEmptyBorder(12, 14, 12, 14)
-	    ));
+		JLabel lblTitulo = new JLabel("Central de Ajuda do Sistema");
+		lblTitulo.setFont(new Font("Segoe UI", Font.BOLD, 22));
+		lblTitulo.setForeground(Color.WHITE);
+		lblTitulo.setBounds(22, 12, 500, 28);
+		header.add(lblTitulo);
 
-	    card.setAlignmentX(Component.LEFT_ALIGNMENT);
-	    card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 260));
+		JLabel lblSub = new JLabel("Manual rápido de utilização das funcionalidades");
+		lblSub.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+		lblSub.setForeground(new Color(230, 230, 230));
+		lblSub.setBounds(24, 42, 400, 18);
+		header.add(lblSub);
 
-	    JLabel lblTitulo = new JLabel(titulo);
-	    lblTitulo.setFont(new Font("Segoe UI", Font.BOLD, 16));
-	    lblTitulo.setForeground(azulTitulo);
-	    lblTitulo.setAlignmentX(Component.LEFT_ALIGNMENT);
+		dlg.add(header, BorderLayout.NORTH);
 
-	    JLabel lblDescricao = new JLabel(
-	            "<html><body style='width:500px'>" + descricao + "</body></html>");
+		JPanel conteudo = new JPanel();
+		conteudo.setLayout(new BoxLayout(conteudo, BoxLayout.Y_AXIS));
+		conteudo.setBackground(Color.WHITE);
+		conteudo.setBorder(BorderFactory.createEmptyBorder(15, 18, 15, 18));
 
-	    lblDescricao.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-	    lblDescricao.setForeground(new Color(90, 90, 90));
-	    lblDescricao.setBorder(BorderFactory.createEmptyBorder(3, 0, 10, 0));
-	    lblDescricao.setAlignmentX(Component.LEFT_ALIGNMENT);
+		adicionarSecaoAjuda(conteudo, "Dados Pessoais", "Área responsável pelo cadastro e gerenciamento dos alunos.",
+				new String[] {
+						"Salvar: preencha todos os campos obrigatórios e clique em Salvar para cadastrar um novo aluno no sistema.",
+						"Consultar: informe o RGM do aluno e clique em Consultar para carregar os dados.",
+						"Alterar: após consultar, edite os campos desejados e clique em Alterar.",
+						"Excluir: remove o cadastro do aluno após confirmação.",
+						"Limpar: limpa todos os campos da tela.", "Sair: encerra a aplicação." });
 
-	    card.add(lblTitulo);
-	    card.add(lblDescricao);
+		adicionarSecaoAjuda(conteudo, "Curso", "Permite vincular um curso ao aluno cadastrado.",
+				new String[] { "Primeiro consulte um aluno na aba Dados Pessoais.", "Selecione o curso desejado.",
+						"O campo Campus será preenchido automaticamente.",
+						"O campo Semestre será preenchido automaticamente com o semestre atual.",
+						"O campo Período será preenchido automaticamente.",
+						"Clique em Salvar para concluir o vínculo do curso." });
 
-	    for (String item : itens) {
+		adicionarSecaoAjuda(conteudo, "Notas e Faltas", "Área utilizada para registrar avaliações e frequência.",
+				new String[] { "Informe o RGM do aluno.", "Selecione o semestre e a disciplina.",
+						"Clique em Consultar para carregar os dados.",
+						"Clique em Alterar para liberar os botões Salvar A1 e Salvar A2.",
+						"Salvar A1 / A2: registra cada avaliação separadamente. Os botões só ficam disponíveis após clicar em Alterar.",
+						"Lançar A3: disponível apenas em recuperação.", "Alterar: atualiza notas ou faltas.",
+						"Excluir: remove o lançamento da disciplina.",
+						"A média e o status são calculados automaticamente.",
+						"Faltas: aceita apenas valores entre 0 e 99 por avaliação. Total acima de 20 reprova por falta." });
 
-	        JLabel lblItem = new JLabel(
-	                "<html><body style='width:500px'>• " + item + "</body></html>");
+		adicionarSecaoAjuda(conteudo, "Boletim", "Exibe e exporta o boletim completo do aluno.",
+				new String[] { "Informe o RGM e clique em Consultar.",
+						"O sistema exibirá todas as disciplinas, notas, faltas e situação.",
+						"Clique em Exportar PDF para gerar o boletim em PDF.",
+						"O arquivo será salvo automaticamente na pasta do projeto." });
 
-	        lblItem.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-	        lblItem.setForeground(new Color(45, 45, 45));
-	        lblItem.setBorder(BorderFactory.createEmptyBorder(3, 10, 3, 0));
-	        lblItem.setAlignmentX(Component.LEFT_ALIGNMENT);
+		adicionarSecaoAjuda(conteudo, "Dicas Importantes", "Boas práticas para utilização do sistema.",
+				new String[] { "Preencha corretamente todos os campos obrigatórios.",
+						"Sempre consulte um aluno antes de alterar ou excluir.",
+						"Utilize o botão Limpar antes de iniciar um novo cadastro.",
+						"Evite inserir letras em campos numéricos.",
+						"Faltas acima de 20 no total (A1 + A2) resultam em reprovação por falta.",
+						"Os botões Salvar A1 e Salvar A2 só são liberados após clicar em Alterar." });
 
-	        card.add(lblItem);
-	    }
+		JScrollPane scroll = new JScrollPane(conteudo);
+		scroll.setBorder(null);
+		scroll.getVerticalScrollBar().setUnitIncrement(14);
+		dlg.add(scroll, BorderLayout.CENTER);
 
-	    painel.add(card);
-	    painel.add(Box.createVerticalStrut(12));
+		JPanel rodape = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 12));
+		rodape.setBackground(azulClaro);
+		rodape.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(190, 210, 230)));
+
+		JButton btnFechar = new JButton("Fechar");
+		btnFechar.setFont(new Font("Segoe UI", Font.BOLD, 16));
+		btnFechar.setPreferredSize(new Dimension(150, 40));
+		Color azulTopo = new Color(33, 87, 153);
+		btnFechar.setBackground(azulTopo);
+		btnFechar.setForeground(Color.WHITE);
+		btnFechar.setFocusPainted(false);
+		btnFechar.setOpaque(true);
+		btnFechar.setBorderPainted(false);
+		btnFechar.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		btnFechar.setBorder(BorderFactory.createEmptyBorder());
+
+		btnFechar.addMouseListener(new java.awt.event.MouseAdapter() {
+			public void mouseEntered(java.awt.event.MouseEvent evt) {
+				btnFechar.setBackground(new Color(18, 45, 85));
+			}
+
+			public void mouseExited(java.awt.event.MouseEvent evt) {
+				btnFechar.setBackground(azulEscuro);
+			}
+		});
+
+		btnFechar.addActionListener(e -> dlg.dispose());
+
+		rodape.add(btnFechar);
+		dlg.add(rodape, BorderLayout.SOUTH);
+
+		dlg.setVisible(true);
+	}
+
+	private void adicionarSecaoAjuda(JPanel painel, String titulo, String descricao, String[] itens) {
+
+		Color azulTitulo = new Color(33, 87, 153);
+
+		JPanel card = new JPanel();
+		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+		card.setBackground(new Color(248, 250, 252));
+		card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(210, 225, 240)),
+				BorderFactory.createEmptyBorder(12, 14, 12, 14)));
+		card.setAlignmentX(Component.LEFT_ALIGNMENT);
+		card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 260));
+
+		JLabel lblTitulo = new JLabel(titulo);
+		lblTitulo.setFont(new Font("Segoe UI", Font.BOLD, 16));
+		lblTitulo.setForeground(azulTitulo);
+		lblTitulo.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+		JLabel lblDescricao = new JLabel("<html><body style='width:500px'>" + descricao + "</body></html>");
+		lblDescricao.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+		lblDescricao.setForeground(new Color(90, 90, 90));
+		lblDescricao.setBorder(BorderFactory.createEmptyBorder(3, 0, 10, 0));
+		lblDescricao.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+		card.add(lblTitulo);
+		card.add(lblDescricao);
+
+		for (String item : itens) {
+			JLabel lblItem = new JLabel("<html><body style='width:500px'>• " + item + "</body></html>");
+			lblItem.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+			lblItem.setForeground(new Color(45, 45, 45));
+			lblItem.setBorder(BorderFactory.createEmptyBorder(3, 10, 3, 0));
+			lblItem.setAlignmentX(Component.LEFT_ALIGNMENT);
+			card.add(lblItem);
+		}
+
+		painel.add(card);
+		painel.add(Box.createVerticalStrut(12));
 	}
 
 	public static void main(String[] args) {
 		SwingUtilities.invokeLater(() -> new TelaPrincipal().setVisible(true));
 	}
-
 }
