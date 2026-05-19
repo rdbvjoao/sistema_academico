@@ -113,8 +113,6 @@ public class TelaPrincipal extends JFrame {
 	private JLabel lblValorMedia, lblStatusMedia;
 	private JButton btnLancarA3;
 
-	// CORREÇÃO: botões declarados como campos da classe para acesso em outros
-	// métodos
 	private JButton btnSalvarA1, btnSalvarA2;
 
 	// --- Aba Boletim ---
@@ -261,6 +259,8 @@ public class TelaPrincipal extends JFrame {
 
 		lbl(p, "Município", MARGEM, 255, 100, 20);
 		txtMunicipio = campo(p, MARGEM, 275, 220, 24, fonte);
+		// CORREÇÃO 2: município aceita apenas letras
+		permitirSomenteLetras(txtMunicipio);
 
 		lbl(p, "UF", 260, 255, 50, 20);
 		cmbUf = new JComboBox<>(UFS);
@@ -457,6 +457,7 @@ public class TelaPrincipal extends JFrame {
 				verificarA3();
 			}
 		});
+		// CORREÇÃO 3: limita a 2 casas decimais nos campos de nota
 		permitirNotaValida(txtA1);
 		permitirNotaValida(txtA2);
 		permitirNotaValida(txtA3);
@@ -557,8 +558,6 @@ public class TelaPrincipal extends JFrame {
 		btnLimpar.addActionListener(e -> limparAbaNotas());
 		p.add(btnLimpar);
 
-		// CORREÇÃO: btnSalvarA1 e btnSalvarA2 são campos da classe e iniciam
-		// desabilitados
 		btnSalvarA1 = btn("Salvar A1", col1X, row2Y, bw, BTN_H);
 		btnSalvarA1.setEnabled(false);
 		btnSalvarA1.addActionListener(e -> acaoSalvarNotaA1());
@@ -654,20 +653,40 @@ public class TelaPrincipal extends JFrame {
 		tabelaBoletim.setRowSelectionAllowed(false);
 		tabelaBoletim.setCellSelectionEnabled(false);
 		tabelaBoletim.setFocusable(false);
+		// CORREÇÃO 5: colorização da coluna Situação para os 4 status
 		tabelaBoletim.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
 			@Override
 			public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int r, int c) {
 				Component comp = super.getTableCellRendererComponent(t, v, sel, foc, r, c);
 				comp.setBackground(Color.WHITE);
+				comp.setForeground(Color.BLACK);
 				if (c == 5) {
+					// coluna Média
 					try {
 						double n = Double.parseDouble(v.toString());
 						comp.setForeground(n < 6 ? new Color(139, 0, 40) : new Color(110, 140, 70));
 					} catch (Exception ex) {
 						comp.setForeground(Color.BLACK);
 					}
-				} else {
-					comp.setForeground(Color.BLACK);
+				} else if (c == 7) {
+					// coluna Situação
+					String sit = v != null ? v.toString() : "";
+					switch (sit) {
+						case "Aprovado":
+							comp.setForeground(new Color(34, 120, 40));
+							break;
+						case "Reprovado":
+							comp.setForeground(new Color(139, 0, 40));
+							break;
+						case "Em Recuperação":
+							comp.setForeground(new Color(180, 100, 0));
+							break;
+						case "Em Andamento":
+							comp.setForeground(new Color(30, 90, 180));
+							break;
+						default:
+							comp.setForeground(Color.BLACK);
+					}
 				}
 				return comp;
 			}
@@ -694,13 +713,25 @@ public class TelaPrincipal extends JFrame {
 			if (!validarCamposAluno())
 				return;
 
+			// CORREÇÃO 1: valida data de nascimento completa, bloqueando datas futuras
 			String data = txtDataNasc.getText().trim();
+			int dia = Integer.parseInt(data.substring(0, 2));
+			int mes = Integer.parseInt(data.substring(3, 5));
 			int ano = Integer.parseInt(data.substring(6, 10));
-			if (ano < 1900 || ano > LocalDate.now().getYear()) {
-				msgErro("Ano de nascimento inválido.");
+			LocalDate nascimento;
+			try {
+				nascimento = LocalDate.of(ano, mes, dia);
+			} catch (Exception ex) {
+				msgErro("Data de nascimento inválida.");
 				txtDataNasc.requestFocus();
 				return;
 			}
+			if (ano < 1900 || nascimento.isAfter(LocalDate.now())) {
+				msgErro("Data de nascimento inválida. Não é permitido data futura ou anterior a 1900.");
+				txtDataNasc.requestFocus();
+				return;
+			}
+
 			if (alunoDAO.existeRgm(txtRgm.getText().trim())) {
 				msgErro("Já existe um aluno cadastrado com este RGM.");
 				txtRgm.requestFocus();
@@ -730,13 +761,25 @@ public class TelaPrincipal extends JFrame {
 				return;
 			}
 
+			// CORREÇÃO 1: valida data de nascimento completa, bloqueando datas futuras
 			String data = txtDataNasc.getText().trim();
+			int dia = Integer.parseInt(data.substring(0, 2));
+			int mes = Integer.parseInt(data.substring(3, 5));
 			int ano = Integer.parseInt(data.substring(6, 10));
-			if (ano < 1900 || ano > LocalDate.now().getYear()) {
-				msgErro("Ano de nascimento inválido.");
+			LocalDate nascimento;
+			try {
+				nascimento = LocalDate.of(ano, mes, dia);
+			} catch (Exception ex) {
+				msgErro("Data de nascimento inválida.");
 				txtDataNasc.requestFocus();
 				return;
 			}
+			if (ano < 1900 || nascimento.isAfter(LocalDate.now())) {
+				msgErro("Data de nascimento inválida. Não é permitido data futura ou anterior a 1900.");
+				txtDataNasc.requestFocus();
+				return;
+			}
+
 			alunoAtual.setRgm(txtRgm.getText().trim());
 			alunoAtual.setNome(txtNome.getText().trim());
 			alunoAtual.setDataNascimento(txtDataNasc.getText().trim());
@@ -813,7 +856,6 @@ public class TelaPrincipal extends JFrame {
 			alunoAtual = aluno;
 			carregarDadosAlunoNotas();
 			atualizarTabelaBoletim();
-			// CORREÇÃO: ao consultar, botões de salvar permanecem travados
 			btnSalvarA1.setEnabled(false);
 			btnSalvarA2.setEnabled(false);
 			msgSucesso("Aluno carregado com sucesso!");
@@ -870,7 +912,9 @@ public class TelaPrincipal extends JFrame {
 			}
 			nf.setA1(a1);
 			nf.setFaltasA1(faltasA1);
-			nf.setMedia(nf.getA2() > 0 ? (a1 + nf.getA2()) / 2.0 : 0);
+			// Se já existe registro no banco, A2 pode ter sido salva (inclusive com valor 0): recalcula a média
+			// Se é novo registro, A2 ainda não foi lançada: média permanece 0 até salvar A2
+			nf.setMedia(nf.getId() != 0 ? calcularMedia(a1, nf.getA2(), nf.getA3()) : 0);
 
 			if (nf.getId() == 0)
 				notaFaltaDAO.salvar(nf);
@@ -879,8 +923,6 @@ public class TelaPrincipal extends JFrame {
 
 			txtA1.setEditable(false);
 			txtFaltasA1.setEditable(false);
-
-			// CORREÇÃO: trava o botão Salvar A1 após salvar com sucesso
 			btnSalvarA1.setEnabled(false);
 
 			atualizarLabelTotalFaltas();
@@ -935,14 +977,12 @@ public class TelaPrincipal extends JFrame {
 
 			nf.setA2(a2);
 			nf.setFaltasA2(faltasA2);
-			nf.setMedia(nf.getA1() > 0 ? (nf.getA1() + a2) / 2.0 : 0);
+			nf.setMedia(calcularMedia(nf.getA1(), a2, nf.getA3()));
 
 			notaFaltaDAO.alterar(nf);
 
 			txtA2.setEditable(false);
 			txtFaltasA2.setEditable(false);
-
-			// CORREÇÃO: trava o botão Salvar A2 após salvar com sucesso
 			btnSalvarA2.setEnabled(false);
 
 			verificarA3();
@@ -1028,7 +1068,6 @@ public class TelaPrincipal extends JFrame {
 			txtFaltasA1.setEditable(true);
 			txtFaltasA2.setEditable(true);
 
-			// CORREÇÃO: libera os botões de salvar somente após clicar em Alterar
 			btnSalvarA1.setEnabled(true);
 			btnSalvarA2.setEnabled(true);
 
@@ -1073,7 +1112,6 @@ public class TelaPrincipal extends JFrame {
 			txtFaltasA2.setEditable(true);
 			txtA3.setEnabled(false);
 
-			// CORREÇÃO: após excluir, os botões de salvar voltam a ficar travados
 			btnSalvarA1.setEnabled(false);
 			btnSalvarA2.setEnabled(false);
 
@@ -1147,10 +1185,7 @@ public class TelaPrincipal extends JFrame {
 				}
 			}
 
-			// Nenhuma nota encontrada: libera campos para primeiro lançamento,
-			// mas mantém os botões de salvar travados — usuário deve clicar em Alterar
-			// para lançar pela primeira vez via fluxo de edição intencional,
-			// ou usar os botões Salvar A1/A2 que serão liberados ao clicar em Alterar.
+			// Nenhuma nota encontrada: libera campos para primeiro lançamento
 			txtA1.setText("");
 			txtA2.setText("");
 			txtA3.setText("");
@@ -1160,6 +1195,10 @@ public class TelaPrincipal extends JFrame {
 			txtA2.setEditable(true);
 			txtFaltasA1.setEditable(true);
 			txtFaltasA2.setEditable(true);
+
+			if (btnSalvarA1 != null) btnSalvarA1.setEnabled(true);
+			if (btnSalvarA2 != null) btnSalvarA2.setEnabled(true);
+
 			atualizarLabelTotalFaltas();
 			atualizarMediaParcial();
 
@@ -1212,8 +1251,34 @@ public class TelaPrincipal extends JFrame {
 	}
 
 	// =========================================================
+	// =========================================================
 	// TABELA DO BOLETIM
 	// =========================================================
+	private String calcularSituacao(NotaFalta nf) {
+		int totalFaltas = nf.getFaltas();
+		double a1 = nf.getA1();
+		double a2 = nf.getA2();
+		double a3 = nf.getA3();
+		double media = nf.getMedia();
+
+		if (totalFaltas > LIMITE_FALTAS_REPROVACAO) {
+			return "Reprovado";
+		}
+		if (a3 > 0) {
+			// A3 foi lançada: situação final
+			return media >= 6.0 ? "Aprovado" : "Reprovado";
+		}
+		if (media >= 6.0) {
+			return "Aprovado";
+		}
+		// Verifica se ainda é possível passar com A3 máxima (10)
+		// (max(A1,A2) + 10) / 2 >= 6  →  max(A1,A2) >= 2
+		if (Math.max(a1, a2) >= 2.0) {
+			return "Em Recuperação";
+		}
+		return "Reprovado";
+	}
+
 	private void atualizarTabelaBoletim() {
 		try {
 			modeloBoletim.setRowCount(0);
@@ -1221,7 +1286,7 @@ public class TelaPrincipal extends JFrame {
 				return;
 			for (NotaFalta nf : notaFaltaDAO.listarPorAluno(alunoAtual.getId())) {
 				modeloBoletim.addRow(new Object[] { nf.getDisciplina(), nf.getSemestre(), nf.getA1(), nf.getA2(),
-						nf.getA3() == 0 ? "-" : nf.getA3(), nf.getMedia(), nf.getFaltas(), nf.getSituacao() });
+						nf.getA3() == 0 ? "-" : nf.getA3(), nf.getMedia(), nf.getFaltas(), calcularSituacao(nf) });
 			}
 			txtBoletimRgm.setText(alunoAtual.getRgm());
 			txtBoletimNome.setText(alunoAtual.getNome());
@@ -1247,6 +1312,7 @@ public class TelaPrincipal extends JFrame {
 
 			BaseColor azulEscuro = new BaseColor(44, 62, 80), azulClaro = new BaseColor(230, 240, 255);
 			BaseColor verde = new BaseColor(198, 239, 206), vermelho = new BaseColor(255, 199, 206);
+			BaseColor amarelo = new BaseColor(255, 235, 156), azulAndamento = new BaseColor(198, 224, 255);
 			BaseColor cinza = new BaseColor(245, 245, 245);
 
 			com.itextpdf.text.Font fTit = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 22, BaseColor.WHITE);
@@ -1302,10 +1368,20 @@ public class TelaPrincipal extends JFrame {
 				cF.setHorizontalAlignment(Element.ALIGN_CENTER);
 				cF.setBackgroundColor(cor);
 				cF.setPadding(6);
-				PdfPCell cS = new PdfPCell(new Phrase(nf.getSituacao(), fBold));
+
+				// CORREÇÃO 5: cores do PDF para os 4 status
+				String sit = calcularSituacao(nf);
+				BaseColor corSit;
+				switch (sit) {
+					case "Aprovado":      corSit = verde;        break;
+					case "Reprovado":     corSit = vermelho;     break;
+					case "Em Recuperação": corSit = amarelo;     break;
+					default:              corSit = azulAndamento; break; // Em Andamento
+				}
+				PdfPCell cS = new PdfPCell(new Phrase(sit, fBold));
 				cS.setHorizontalAlignment(Element.ALIGN_CENTER);
 				cS.setPadding(6);
-				cS.setBackgroundColor(nf.getSituacao().equalsIgnoreCase("Aprovado") ? verde : vermelho);
+				cS.setBackgroundColor(corSit);
 				tab.addCell(cD);
 				tab.addCell(cN);
 				tab.addCell(cF);
@@ -1427,7 +1503,6 @@ public class TelaPrincipal extends JFrame {
 		alunoAtual = null;
 		cmbDisciplina.removeAllItems();
 
-		// CORREÇÃO: garante que os botões de salvar fiquem travados ao limpar
 		if (btnSalvarA1 != null)
 			btnSalvarA1.setEnabled(false);
 		if (btnSalvarA2 != null)
@@ -1465,8 +1540,6 @@ public class TelaPrincipal extends JFrame {
 		if (modeloBoletim != null)
 			modeloBoletim.setRowCount(0);
 
-		// CORREÇÃO: garante que os botões de salvar fiquem travados ao limpar
-		// formulário
 		if (btnSalvarA1 != null)
 			btnSalvarA1.setEnabled(false);
 		if (btnSalvarA2 != null)
@@ -1515,6 +1588,11 @@ public class TelaPrincipal extends JFrame {
 		}
 		if (txtMunicipio.getText().trim().isEmpty()) {
 			err(txtMunicipio, "Informe o município.");
+			return false;
+		}
+		if (cmbUf.getSelectedItem() == null || cmbUf.getSelectedItem().toString().trim().isEmpty()) {
+			msgErro("Selecione a UF do estado.");
+			cmbUf.requestFocus();
 			return false;
 		}
 		if (txtCelular.getText().contains("_")) {
@@ -1590,12 +1668,29 @@ public class TelaPrincipal extends JFrame {
 			if (totalFaltas > LIMITE_FALTAS_REPROVACAO) {
 				lblStatusMedia.setText("Reprovado por falta");
 				lblStatusMedia.setForeground(new Color(139, 0, 40));
+			} else if (a3 > 0) {
+				// A3 já foi lançada: verifica aprovação pela média final
+				if (media >= 6.0) {
+					lblStatusMedia.setText("Aprovado");
+					lblStatusMedia.setForeground(new Color(60, 120, 40));
+				} else {
+					lblStatusMedia.setText("Reprovado");
+					lblStatusMedia.setForeground(new Color(139, 0, 40));
+				}
 			} else if (media >= 6.0) {
 				lblStatusMedia.setText("Aprovado");
 				lblStatusMedia.setForeground(new Color(60, 120, 40));
 			} else {
-				lblStatusMedia.setText("Precisa A3");
-				lblStatusMedia.setForeground(new Color(180, 100, 0));
+				// Verifica se ainda é matematicamente possível passar com A3
+				// Fórmula com A3: (max(A1,A2) + A3) / 2 >= 6  →  max(A1,A2) >= 2 (com A3=10 máximo)
+				boolean podePassarComA3 = Math.max(a1, a2) >= 2.0;
+				if (podePassarComA3) {
+					lblStatusMedia.setText("Precisa A3");
+					lblStatusMedia.setForeground(new Color(180, 100, 0));
+				} else {
+					lblStatusMedia.setText("Reprovado");
+					lblStatusMedia.setForeground(new Color(139, 0, 40));
+				}
 			}
 		} catch (Exception e) {
 			lblValorMedia.setText("0,0");
@@ -1608,21 +1703,34 @@ public class TelaPrincipal extends JFrame {
 		return a3 > 0 ? (Math.max(a1, a2) + a3) / 2.0 : (a1 + a2) / 2.0;
 	}
 
+	// CORREÇÃO 4: A3 é liberada sempre que a média < 6, inclusive quando ambas são 0
 	private void verificarA3() {
 		try {
-			double a1 = Double.parseDouble(txtA1.getText().replace(",", "."));
-			double a2 = Double.parseDouble(txtA2.getText().replace(",", "."));
+			String txtA1Val = txtA1.getText().trim();
+			String txtA2Val = txtA2.getText().trim();
+			boolean a1Preenchida = !txtA1Val.isEmpty();
+			boolean a2Preenchida = !txtA2Val.isEmpty();
+
+			if (!a1Preenchida || !a2Preenchida) {
+				txtA3.setEnabled(false);
+				if (btnLancarA3 != null) btnLancarA3.setEnabled(false);
+				return;
+			}
+
+			double a1 = Double.parseDouble(txtA1Val.replace(",", "."));
+			double a2 = Double.parseDouble(txtA2Val.replace(",", "."));
 			double m = (a1 + a2) / 2.0;
-			boolean precisaA3 = m < 6.0 && m > 0;
+
+			// A3 só é liberada se a média < 6 E ainda for possível passar com A3 máximo (10)
+			// Fórmula: (max(A1,A2) + 10) / 2 >= 6  →  max(A1,A2) >= 2
+			boolean podePassarComA3 = Math.max(a1, a2) >= 2.0;
+			boolean precisaA3 = m < 6.0 && podePassarComA3;
 			txtA3.setEnabled(precisaA3);
-			if (btnLancarA3 != null)
-				btnLancarA3.setEnabled(precisaA3);
-			if (!precisaA3)
-				txtA3.setText("");
+			if (btnLancarA3 != null) btnLancarA3.setEnabled(precisaA3);
+			if (!precisaA3) txtA3.setText("");
 		} catch (Exception e) {
 			txtA3.setEnabled(false);
-			if (btnLancarA3 != null)
-				btnLancarA3.setEnabled(false);
+			if (btnLancarA3 != null) btnLancarA3.setEnabled(false);
 			txtA3.setText("");
 		}
 	}
@@ -1702,36 +1810,45 @@ public class TelaPrincipal extends JFrame {
 		c.setBackground(COR_CAMPO);
 	}
 
+	// CORREÇÃO 3: limita a 2 casas decimais e máximo 10
 	private void permitirNotaValida(JTextField campo) {
 		campo.addKeyListener(new KeyAdapter() {
 			@Override
 			public void keyTyped(KeyEvent e) {
 				char c = e.getKeyChar();
-				if (c == KeyEvent.VK_BACK_SPACE)
-					return;
+				if (c == KeyEvent.VK_BACK_SPACE) return;
 				String atual = campo.getText();
-				if (Character.isDigit(c)) {
-					try {
-						double val = Double.parseDouble((atual + c).replace(",", "."));
-						if (val > 10) {
-							e.consume();
-							return;
-						}
-					} catch (NumberFormatException ignored) {
-					}
+
+				// Permite separador decimal (apenas um)
+				if ((c == '.' || c == ',') && !atual.contains(".") && !atual.contains(",")) {
 					return;
 				}
-				if ((c == '.' || c == ',') && !atual.contains(".") && !atual.contains(","))
+
+				// Só aceita dígitos a partir daqui
+				if (!Character.isDigit(c)) {
+					e.consume();
 					return;
-				e.consume();
+				}
+
+				// Limita a 2 casas decimais
+				int sepIdx = Math.max(atual.indexOf('.'), atual.indexOf(','));
+				if (sepIdx >= 0 && (atual.length() - sepIdx) > 2) {
+					e.consume();
+					return;
+				}
+
+				// Valor máximo 10
+				try {
+					double val = Double.parseDouble((atual + c).replace(",", "."));
+					if (val > 10) e.consume();
+				} catch (NumberFormatException ignored) {}
 			}
 		});
 		campo.addFocusListener(new FocusAdapter() {
 			@Override
 			public void focusLost(FocusEvent e) {
 				String txt = campo.getText().trim();
-				if (txt.isEmpty())
-					return;
+				if (txt.isEmpty()) return;
 				try {
 					double val = Double.parseDouble(txt.replace(",", "."));
 					if (val < 0 || val > 10) {
@@ -1874,7 +1991,8 @@ public class TelaPrincipal extends JFrame {
 						"Clique em Consultar para carregar os dados.",
 						"Clique em Alterar para liberar os botões Salvar A1 e Salvar A2.",
 						"Salvar A1 / A2: registra cada avaliação separadamente. Os botões só ficam disponíveis após clicar em Alterar.",
-						"Lançar A3: disponível apenas em recuperação.", "Alterar: atualiza notas ou faltas.",
+						"Lançar A3: disponível quando a média de A1 e A2 for inferior a 6,0, inclusive quando ambas são 0.",
+						"Alterar: atualiza notas ou faltas.",
 						"Excluir: remove o lançamento da disciplina.",
 						"A média e o status são calculados automaticamente.",
 						"Faltas: aceita apenas valores entre 0 e 99 por avaliação. Total acima de 20 reprova por falta." });
@@ -1882,6 +2000,7 @@ public class TelaPrincipal extends JFrame {
 		adicionarSecaoAjuda(conteudo, "Boletim", "Exibe e exporta o boletim completo do aluno.",
 				new String[] { "Informe o RGM e clique em Consultar.",
 						"O sistema exibirá todas as disciplinas, notas, faltas e situação.",
+						"Situações possíveis: Aprovado, Reprovado, Em Recuperação e Em Andamento.",
 						"Clique em Exportar PDF para gerar o boletim em PDF.",
 						"O arquivo será salvo automaticamente na pasta do projeto." });
 
@@ -1890,6 +2009,9 @@ public class TelaPrincipal extends JFrame {
 						"Sempre consulte um aluno antes de alterar ou excluir.",
 						"Utilize o botão Limpar antes de iniciar um novo cadastro.",
 						"Evite inserir letras em campos numéricos.",
+						"Notas aceitam no máximo 2 casas decimais e devem estar entre 0 e 10.",
+						"O campo Município aceita apenas letras.",
+						"A data de nascimento não pode ser futura nem anterior a 1900.",
 						"Faltas acima de 20 no total (A1 + A2) resultam em reprovação por falta.",
 						"Os botões Salvar A1 e Salvar A2 só são liberados após clicar em Alterar." });
 
